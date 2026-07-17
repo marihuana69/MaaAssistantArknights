@@ -476,6 +476,69 @@ bool asst::RoguelikeRecruitTaskPlugin::_run()
         //     return true;
         // }
 
+                // JieGarden: 허용 후보가 없으면 모집권 보관
+        // 무료 임시 2정예 검사는 이 코드보다 위에서 이미 완료됨
+        if (theme == RoguelikeTheme::JieGarden && !m_initail_recruit) {
+            for (int reserve_try = 0; reserve_try < 3; ++reserve_try) {
+                const bool ret =
+                    ProcessTask(
+                        *this,
+                        { "JieGarden@Roguelike@ReserveRecruitmentVoucher" })
+                        .run();
+
+                if (!ret) {
+                    Log.warn(
+                        __FUNCTION__,
+                        "| Reserve recruitment voucher task failed, retry:",
+                        reserve_try + 1);
+                    sleep(500);
+                    continue;
+                }
+
+                // 보관 성공 후 모집 화면이 실제로 닫혔는지 확인
+                Matcher reserve_analyzer;
+                reserve_analyzer.set_task_info(
+                    "JieGarden@Roguelike@ChooseOperConfirm");
+
+                bool recruitment_screen_closed = false;
+
+                for (int wait_i = 0; wait_i < 10; ++wait_i) {
+                    reserve_analyzer.set_image(ctrler()->get_image());
+
+                    if (reserve_analyzer.analyze().has_value()) {
+                        Log.info(
+                            __FUNCTION__,
+                            "| Waiting for recruitment screen to close...");
+                        sleep(300);
+                        continue;
+                    }
+
+                    recruitment_screen_closed = true;
+                    break;
+                }
+
+                if (recruitment_screen_closed) {
+                    Log.info(
+                        __FUNCTION__,
+                        "| Recruitment voucher successfully reserved.");
+                    return true;
+                }
+
+                Log.warn(
+                    __FUNCTION__,
+                    "| Recruitment screen did not close, retry reserve.");
+                sleep(500);
+            }
+
+            // 보관 실패를 성공으로 처리하면 후속 포기 흐름으로 넘어갈 수 있다.
+            // 모집권을 버리지 않고 전체 작업을 실패 처리하여 중단한다.
+            Log.error(
+                __FUNCTION__,
+                "| Failed to reserve recruitment voucher. "
+                "Stop instead of abandoning it.");
+            return false;
+        }
+
         Log.trace(__FUNCTION__, "| Did not choose oper");
         return true;
     }
